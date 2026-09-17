@@ -210,3 +210,6 @@ check-docstrings:
 fix-docstrings:
 	uv run python utils/check_docstrings.py --fix_and_overwrite
 	uv run python utils/check_doctest_list.py --fix_and_overwrite
+
+# Local SO-101 leader/follower helpers (see so101_tools/README.md)
+-include so101_tools/so101.mk
