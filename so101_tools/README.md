@@ -10,13 +10,24 @@ make help            # list targets and current port/id settings
 
 ## Hardware map
 
-| Arm      | Port                          | Calibration id |
-|----------|-------------------------------|----------------|
-| Follower | `/dev/tty.usbmodem5B8E1123491` | `follower_1`   |
-| Leader   | `/dev/tty.usbmodem5B8E1133621` | `leader_1`     |
+Arms are selected by calibration id.  The id -> port table lives at the top of
+`so101.mk`; add a line per board (port names embed the board's USB serial
+number, so they survive replugging).
 
-Port names embed the board's USB serial number, so they survive replugging.
-`make ports` shows what is connected; override with `make teleop FOLLOWER_PORT=...`.
+| Id           | Port                           | Notes                          |
+|--------------|--------------------------------|--------------------------------|
+| `follower_1` | `/dev/tty.usbmodem5B8E1123491` | Waveshare board, firmware 2307 |
+| `follower_2` | `/dev/tty.usbmodem5C4C1251981` | other CH343 board, firmware 2819 |
+| `leader_1`   | `/dev/tty.usbmodem5B8E1133621` | Waveshare board, encoder-only servos |
+
+```bash
+make arms                                  # which arms are known / connected
+make teleop FOLLOWER_ID=follower_2         # any target accepts FOLLOWER_ID / LEADER_ID
+make calibrate-follower FOLLOWER_ID=follower_2
+```
+
+A target whose arm is not plugged in stops with a message listing the
+connected boards instead of a Python traceback.
 
 ## Daily use
 
@@ -68,6 +79,13 @@ will disagree by a constant offset.  A range of `0..4095` on any joint other
 than `wrist_roll` means the joint was not centred before the first Enter; redo it.
 
 ## Troubleshooting
+
+**`make` drops into an interactive Python prompt.**  Upstream's root Makefile
+runs `.venv/bin/python` with no arguments to discover the interpreter path,
+which opens the REPL when stdin is a terminal.  This fork resolves the path
+with `command -v` instead; if you see `>>>` after a `git pull`, that line was
+overwritten (press Ctrl-D to continue).
+
 
 **A joint is "stuck" and pins against a stop at full load** (motor LED may
 blink with an overload error).  Two servos did this on the follower.  In

@@ -8,10 +8,18 @@
 # replugs on the same Mac.  `make ports` lists what is currently connected.
 # ---------------------------------------------------------------------------
 
-FOLLOWER_PORT ?= /dev/tty.usbmodem5B8E1123491
-LEADER_PORT   ?= /dev/tty.usbmodem5B8E1133621
+# Known arms: calibration id -> port.  Port names embed the board's USB serial
+# number, so add one line per board.  Select an arm by id, e.g.
+#   make calibrate-follower FOLLOWER_ID=follower_2
+#   make teleop FOLLOWER_ID=follower_2 LEADER_ID=leader_1
+PORT_follower_1 := /dev/tty.usbmodem5B8E1123491
+PORT_follower_2 := /dev/tty.usbmodem5C4C1251981
+PORT_leader_1   := /dev/tty.usbmodem5B8E1133621
+
 FOLLOWER_ID   ?= follower_1
 LEADER_ID     ?= leader_1
+FOLLOWER_PORT ?= $(PORT_$(FOLLOWER_ID))
+LEADER_PORT   ?= $(PORT_$(LEADER_ID))
 ROBOT_TYPE    ?= so101_follower
 TELEOP_TYPE   ?= so101_leader
 FPS           ?= 30
@@ -37,16 +45,27 @@ ifneq ($(strip $(CAMERAS)),)
 ROBOT_ARGS += --robot.cameras="$(CAMERAS)"
 endif
 
+# Fail fast with a readable message (instead of a Python traceback) when the port for the
+# selected arm is unknown or not plugged in.
+define require_port_present
+	@if [ -z "$(1)" ]; then echo "ERROR: no port known for that arm id. Known arms:"; \
+		$(MAKE) --no-print-directory arms; exit 1; fi
+	@if [ ! -e "$(1)" ]; then echo "ERROR: $(1) is not connected. Connected boards:"; \
+		ls /dev/tty.usbmodem* 2>/dev/null || echo "  (none)"; \
+		echo "Plug the arm in, or select another: make <target> FOLLOWER_ID=<id> / LEADER_ID=<id> (see 'make arms')"; exit 1; fi
+endef
+
 # Refuse to touch a serial port that another process (e.g. a running teleop) already has open.
 # Two readers on one port corrupt each other's packets, and connecting through lerobot disables
 # torque on disconnect, which would drop the follower mid-teleop.
 define require_port_free
+	$(call require_port_present,$(1))
 	@busy=$$(lsof -n -P -t $(1) 2>/dev/null </dev/null); if [ -n "$$busy" ]; then \
 		echo "ERROR: $(1) is in use by PID $$busy:"; ps -o command= -p $$busy | head -1; \
 		echo "Stop that process (Ctrl+C in its terminal) and retry."; exit 1; fi
 endef
 
-.PHONY: help ports find-port scan scan-follower scan-leader probe-follower probe-leader \
+.PHONY: help arms ports find-port scan scan-follower scan-leader probe-follower probe-leader \
         setup-follower setup-leader setup-one calibrate-follower calibrate-leader \
         angles teleop record replay eeprom-check hold-test unstick torque-off env
 
@@ -54,10 +73,18 @@ help:  ## list SO-101 targets
 	@echo "SO-101 targets (run from repo root):"
 	@grep -hE '^[a-zA-Z0-9_-]+:.*## ' $(TOOLS)/so101.mk | sort | awk -F':.*## ' '{printf "  %-20s %s\n", $$1, $$2}'
 	@echo
-	@echo "Current settings: FOLLOWER_PORT=$(FOLLOWER_PORT) LEADER_PORT=$(LEADER_PORT) FOLLOWER_ID=$(FOLLOWER_ID) LEADER_ID=$(LEADER_ID)"
+	@$(MAKE) --no-print-directory arms
 
 env:  ## install / refresh the uv environment (python 3.12, feetech + CLI extras)
 	uv sync --locked -p 3.12 --extra feetech --extra core_scripts
+
+arms:  ## list known arms (id -> port) and whether each is connected
+	@for v in $(filter PORT_%,$(.VARIABLES)); do id=$${v#PORT_}; port=$$( $(MAKE) --no-print-directory -s print-var VAR=$$v ); \
+		if [ -e "$$port" ]; then st="connected"; else st="not connected"; fi; printf "  %-12s %-34s %s\n" "$$id" "$$port" "$$st"; done | sort
+	@echo "  selected: FOLLOWER_ID=$(FOLLOWER_ID) LEADER_ID=$(LEADER_ID)"
+
+print-var:
+	@echo $($(VAR))
 
 ports:  ## list connected USB serial boards
 	@ls /dev/tty.usbmodem* 2>/dev/null || echo "no /dev/tty.usbmodem* devices found"
