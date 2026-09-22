@@ -72,6 +72,16 @@ def main() -> None:
     failures = 0
     for mid in ids:
         name = fr.MOTOR_NAMES.get(mid, f"id{mid}")
+        pos = fr.read(ser, mid, fr.REG_PRESENT_POSITION, 2)
+        mn = fr.read(ser, mid, fr.REG_MIN_LIMIT, 2)
+        mx = fr.read(ser, mid, fr.REG_MAX_LIMIT, 2)
+        if pos is not None and mn is not None and mx is not None and not (mn <= pos <= mx):
+            print(
+                f"id{mid} {name:14s} SKIPPED: resting at {pos}, outside its calibrated range {mn}..{mx}. "
+                "The servo would pull it back to the limit, which looks like a runaway. Move the joint inside its range and rerun."
+            )
+            failures += 1
+            continue
         p, bad, mc, md = hold(ser, mid)
         if bad:
             failures += 1

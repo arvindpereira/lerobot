@@ -16,6 +16,12 @@ PORT_follower_1 := /dev/tty.usbmodem5B8E1123491
 PORT_follower_2 := /dev/tty.usbmodem5C4C1251981
 PORT_leader_1   := /dev/tty.usbmodem5B8E1133621
 
+# Catch the common typo of FOLLOWER=/LEADER= (the real variables are FOLLOWER_ID/LEADER_ID) so a
+# mistyped selection cannot silently fall back to the default arms.
+ifneq ($(strip $(FOLLOWER)$(LEADER)),)
+$(error use FOLLOWER_ID=<id> and LEADER_ID=<id>, not FOLLOWER=/LEADER= (see 'make arms'))
+endif
+
 FOLLOWER_ID   ?= follower_1
 LEADER_ID     ?= leader_1
 FOLLOWER_PORT ?= $(PORT_$(FOLLOWER_ID))
@@ -23,8 +29,10 @@ LEADER_PORT   ?= $(PORT_$(LEADER_ID))
 ROBOT_TYPE    ?= so101_follower
 TELEOP_TYPE   ?= so101_leader
 FPS           ?= 30
-MAX_REL       ?= 10          # --robot.max_relative_target (deg per step); empty disables the cap
-CAMERAS       ?=             # e.g. "{ front: {type: opencv, index_or_path: 0, width: 640, height: 480, fps: 30}}"
+# --robot.max_relative_target (deg per step); empty disables the cap
+MAX_REL ?= 10
+# e.g. "{ front: {type: opencv, index_or_path: 0, width: 640, height: 480, fps: 30}}"
+CAMERAS ?= 
 HF_USER       ?= $(shell NO_COLOR=1 hf auth whoami 2>/dev/null | awk -F': *' 'NR==1 {print $$2}')
 TASK          ?= my_task
 TASK_DESC     ?= Describe the task in one sentence
@@ -32,6 +40,10 @@ NUM_EPISODES  ?= 50
 EPISODE_TIME  ?= 30
 RESET_TIME    ?= 10
 EPISODE       ?= 0
+# sweep duration for cal-sweep
+SECONDS ?= 30
+# for cal-center / cal-sweep / setup-one
+ARM ?= follower
 
 TOOLS := so101_tools
 RUN   := uv run
@@ -67,7 +79,7 @@ endef
 
 .PHONY: help arms ports find-port scan scan-follower scan-leader probe-follower probe-leader \
         setup-follower setup-leader setup-one calibrate-follower calibrate-leader \
-        angles teleop record replay eeprom-check hold-test unstick torque-off env
+        cal-center cal-sweep angles teleop record replay eeprom-check hold-test unstick torque-off env
 
 help:  ## list SO-101 targets
 	@echo "SO-101 targets (run from repo root):"
@@ -130,6 +142,17 @@ calibrate-follower:  ## interactive: calibrate the follower (type 'c' at the pro
 calibrate-leader:  ## interactive: calibrate the leader (type 'c' at the prompt to redo)
 	$(call require_port_free,$(LEADER_PORT))
 	$(RUN) lerobot-calibrate --teleop.type=$(TELEOP_TYPE) --teleop.port=$(LEADER_PORT) --teleop.id=$(LEADER_ID)
+
+ARM_PORT = $(if $(filter leader,$(ARM)),$(LEADER_PORT),$(FOLLOWER_PORT))
+ARM_CALID = $(if $(filter leader,$(ARM)),$(LEADER_ID),$(FOLLOWER_ID))
+
+cal-center:  ## non-interactive calibration step 1: joints centred -> write homing offsets (ARM=follower|leader)
+	$(call require_port_free,$(ARM_PORT))
+	$(RUN) python $(TOOLS)/calibrate_steps.py center $(ARM_PORT) $(ARM) $(ARM_CALID)
+
+cal-sweep:  ## non-interactive calibration step 2: record ranges for SECONDS while sweeping joints, then save
+	$(call require_port_free,$(ARM_PORT))
+	$(RUN) python $(TOOLS)/calibrate_steps.py sweep $(ARM_PORT) $(ARM) $(ARM_CALID) --seconds $(SECONDS)
 
 angles:  ## read both arms' joint angles through their calibrations
 	$(call require_port_free,$(FOLLOWER_PORT))

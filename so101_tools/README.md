@@ -53,6 +53,9 @@ make setup-follower      # interactive, one motor at a time (see notes below)
 make setup-leader
 make calibrate-follower  # centre joints, Enter, sweep every joint to both stops, Enter
 make calibrate-leader
+# or, non-interactively (handy when an agent is driving the session):
+make cal-center FOLLOWER_ID=follower_2            # joints centred -> homing offsets
+make cal-sweep  FOLLOWER_ID=follower_2 SECONDS=45 # sweep joints to both stops while it records, then it saves
 make angles              # both arms in the same pose should agree within a few degrees
 make teleop
 ```
@@ -77,6 +80,14 @@ Degrees are measured from the midpoint of each joint's recorded range, so
 sweep every joint fully to both hard stops on both arms or leader and follower
 will disagree by a constant offset.  A range of `0..4095` on any joint other
 than `wrist_roll` means the joint was not centred before the first Enter; redo it.
+
+Avoid centring a joint near the encoder's raw wrap point (a homing offset
+close to +-2047 in the saved file is the tell).  Newer servo firmware (2819)
+counts turns across that point, and the count is lost at power-up, so half
+the joint's travel can read a full turn off after a restart.  The clean fix
+is mechanical: detach the link from the horn, turn the shaft half a turn,
+reattach, recalibrate.  `make hold-test` reports a joint resting outside its
+calibrated range as SKIPPED rather than as a runaway.
 
 ## Troubleshooting
 
